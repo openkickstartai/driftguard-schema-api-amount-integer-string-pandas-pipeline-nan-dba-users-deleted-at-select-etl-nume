@@ -38,14 +38,41 @@ def cli():
 
 
 @cli.command()
-@click.argument("source")
+@click.argument("source", required=False, default=None)
 @click.option("--table", "-t", default=None, help="Table name (required for databases)")
 @click.option("--format", "-f", "fmt", type=click.Choice(["sqlite", "csv", "json"]), default=None)
-def snapshot(source, table, fmt):
+@click.option("--source", "source_type", type=click.Choice(["csv", "rest", "postgres"]), default=None, help="Connector type")
+@click.option("--path", "source_path", default=None, help="File path for connector")
+@click.option("--url", default=None, help="URL for REST API connector")
+def snapshot(source, table, fmt, source_type, source_path, url):
     """Take a baseline schema snapshot."""
+    if source_type:
+        from driftguard.connectors import CSVConnector, RestAPIConnector, PostgresConnector
+        connector_map = {"csv": CSVConnector, "rest": RestAPIConnector, "postgres": PostgresConnector}
+        conn = connector_map[source_type]()
+        config = {}
+        if source_path:
+            config["path"] = source_path
+        if url:
+            config["url"] = url
+        conn.connect(config)
+        snap = conn.snapshot()
+        conn.close()
+        tbl = Table(title=f"Schema Snapshot: {snap.source_name}")
+        tbl.add_column("Column", style="cyan")
+        tbl.add_column("Type", style="green")
+        for c in snap.columns:
+            tbl.add_row(c.name, c.dtype)
+        console.print(tbl)
+        console.print(f"[green]\u2713[/] Snapshot: {len(snap.columns)} columns from {snap.source_name}")
+        return
+    if not source:
+        console.print("[red]Error: provide SOURCE argument or use --source/--path options[/]")
+        sys.exit(1)
     schema = _take_snapshot(source, table, fmt)
     save_snapshot(schema)
     console.print(f"[green]\u2713[/] Snapshot: [bold]{schema.table}[/] | {len(schema.columns)} cols | fp={schema.fingerprint}")
+
 
 
 @cli.command()
