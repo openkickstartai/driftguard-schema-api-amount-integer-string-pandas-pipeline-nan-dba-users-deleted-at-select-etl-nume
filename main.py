@@ -87,5 +87,38 @@ def check(source, table, fmt, output):
         sys.exit(1)
 
 
+
+@cli.command()
+@click.option("--source", "-s", required=True, help="Source name to check blast radius for")
+@click.option("--config", "-c", "config_path", default="dag_config.yaml", help="Path to DAG config YAML")
+@click.option("--event", "-e", default=None, help="Drift event description")
+def blast(source, config_path, event):
+    """Show blast radius of a schema change on downstream assets."""
+    from driftguard.dag import load_dag, blast_radius, render_blast_radius
+
+    try:
+        dag = load_dag(config_path)
+    except FileNotFoundError:
+        console.print(f"[red]Error: Config file not found: {config_path}[/]")
+        sys.exit(1)
+    except ValueError as e:
+        console.print(f"[red]Error: {e}[/]")
+        sys.exit(1)
+
+    try:
+        affected = blast_radius(dag, source, event)
+    except ValueError as e:
+        console.print(f"[red]Error: {e}[/]")
+        sys.exit(1)
+
+    output = render_blast_radius(affected, source_name=source, dag=dag, drift_event=event)
+    console.print(output)
+
+    if affected:
+        console.print(f"[yellow]\u26a0 {len(affected)} downstream asset(s) affected[/]")
+    else:
+        console.print("[green]\u2713 No downstream assets affected[/]")
+
+
 if __name__ == "__main__":
     cli()
